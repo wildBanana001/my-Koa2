@@ -27,14 +27,31 @@ let context = {
 	}
 }
 
+
 class Application {
 	constructor() {
 		this.context = context
 		this.request = request
 		this.response = response
-	}
+		this.middlewares = []
+}
 	use(callback) {
-		this.callback = callback
+		this.middlewares.push(callback)
+	}
+	compose (middlewares) {
+		return (context) => {
+			// 先执行第一个函数
+			return dispatch(0)
+			function dispatch(i) {
+				let fn = middlewares[i]
+				if (!fn) {
+					return Promise.reslove()
+				}
+				return Promise.resolve(fn(context,function next() {
+					return dispatch(i+1)
+				}))
+			}
+		}
 	}
 	createCtx(req, res) {
 		let ctx = Object.create(this.context)
@@ -46,12 +63,17 @@ class Application {
 	}
 	async transformCtx(req, res) {
 		let ctx = this.createCtx(req, res)
-		await this.callback(ctx)
+		const fn = this.compose(middlewares)
+		await fn(ctx)
 		ctx.res.end(ctx.body)
 	}
 	listen(...args) {
-		const server = http.createServer((req, res) => {
-			this.transformCtx(req, res)
+		const server = http.createServer(async(req, res) => {
+			// this.transformCtx(req, res)
+			let ctx = this.createCtx(req, res)
+			const fn = this.compose(this.middlewares)
+			await fn(ctx)
+			ctx.res.end(ctx.body)
 		})
 		server.listen(...args)
 	}
